@@ -1,8 +1,17 @@
 var canvas = document.getElementById('canvas');
+
+
+var canvasWidth = 640;
+var canvasHeight = 480;
+canvas.width = canvasWidth;
+canvas.height = canvasHeight;
+
 canvas.style.background = "darkgreen"
 var ctx = canvas.getContext('2d');
+ctx.textBaseline = "middle"; // vertical alignment
 
-var seconds = 0;
+
+var total_sheep_count = 40;
 
 class GameObject {
     constructor(x, y, width, height) {
@@ -20,18 +29,16 @@ class GameObject {
         return [x1, y1, x2, y2]
     }
 
-
+    test_collision(other) {
+        let [x1_min, y1_min, x1_max, y1_max] = this.bounding_rect()
+        let [x2_min, y2_min, x2_max, y2_max] = other.bounding_rect()
+        return !(x1_max < x2_min || x1_min > x2_max || y1_max < y2_min || y1_min > y2_max)
+    }
 }
 
 class SolidGameObject extends GameObject {
     constructor(x, y, width, height) {
         super(x, y, width, height);
-    }
-
-    test_collision(other) {
-        let [x1_min, y1_min, x1_max, y1_max] = this.bounding_rect()
-        let [x2_min, y2_min, x2_max, y2_max] = other.bounding_rect()
-        return !(x1_max < x2_min || x1_min > x2_max || y1_max < y2_min || y1_min > y2_max)
     }
 }
 
@@ -45,7 +52,7 @@ class Sheep extends SolidGameObject {
         this.maxSpeed = 1.5 + Math.random() * 1.5;
 
         this.stampedeCooldown = Math.random() * 500 + 500; // frames until next possible stampede
-        this.mouseTolerance = 30 + Math.random() * 40; // 20–60px
+        this.mouseTolerance = 50 + Math.random() * 40; // 20–60px
 
     }
 
@@ -194,28 +201,113 @@ update() {
     this.y += moveY;
     this.vx = moveX * 0.9;
     this.vy = moveY * 0.9;
+
+    for (let pen of g.objects.filter(o => o instanceof Pen)) {
+        if (this.test_collision(pen)) {
+            const minX = pen.x + this.radius;
+            const maxX = pen.x + pen.width - this.radius;
+            const minY = pen.y + this.radius;
+            const maxY = pen.y + pen.height - this.radius;
+
+            if (this.x < minX) this.x = minX;
+            if (this.x > maxX) this.x = maxX;
+            if (this.y < minY) this.y = minY;
+            if (this.y > maxY) this.y = maxY;
+        }
+    }
 }
 
 
 }
 
 
-// class Pen extends GameObject(x, y, width, height) {
-//     constructor(x, y, width, height) {
-//         super(x, y, width, height);
-//         this.color = "brown";
-//     }
-//
-//     draw(ctx) {
-//         ctx.fillStyle = this.color;
-//         ctx.fillRect(this.x, this.y, this.width, this.height);
-//     }
-// }
+class Pen extends GameObject {
+    constructor(x, y, width, height, max_sheep_count) {
+        super(x, y, width, height);
+        this.color = "saddlebrown";
+        this.sheep_count = 0;
+        this.max_sheep_count = max_sheep_count;
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+
+        ctx.strokeStyle = "black";   // outline colour
+        ctx.lineWidth = 4;           // thickness in pixels
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
+    }
+
+    update() {
+        this.sheep_count = 0;
+        for (const obj of g.objects) {
+            if (obj instanceof Sheep && this.test_collision(obj)) {
+                this.sheep_count++;
+            }
+        }
+    }
+}
+
+class PenLabel {
+    constructor(pen) {
+        this.pen = pen;
+        this.x = pen.x+(pen.width/2)
+        this.y = pen.y+pen.height+20;
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.textAlign = "center";   // horizontal alignment
+        ctx.fillText(`${this.pen.sheep_count} / ${this.pen.max_sheep_count}`, this.x, this.y);
+        ctx.textAlign = "left";   // horizontal alignment
+    }
+    update() { }
+}
+
+class Timer extends GameObject {
+    constructor(x, y) {
+        super(x, y, 0, 0);
+        this.x = x;
+        this.y = y;
+        this.seconds = 0;
+        this.lastUpdate = Date.now();
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.textAlign="right";
+        if (this.seconds <= 60) {
+            ctx.fillText(`Time: ${this.seconds}s`, this.x, this.y);
+        }
+        else {
+            ctx.fillText(`Out of Time!`, this.x, this.y);
+        }
+        ctx.textAlign="left";
+    }
+
+    update() {
+        let now = Date.now();
+        if (now - this.lastUpdate >= 1000)
+        {
+            this.seconds++;
+            this.lastUpdate = now;
+        }
+    }
+}
+
 
 class Game {
     constructor() {
         this.objects = [];
-        for (let i = 0; i < 15; i++) {
+        this.pens = [];
+        this.generate_pens(2)
+
+        this.timer = new Timer(canvas.width-10, 30);
+        this.objects.push(this.timer)
+
+        for (let i = 0; i < total_sheep_count; i++) {
             this.objects.push(new Sheep(Math.random() * canvas.width, Math.random() * canvas.height, 4));
         }
 
@@ -224,6 +316,26 @@ class Game {
             this.mouse_x = e.clientX - rect.left;
             this.mouse_y = e.clientY - rect.top;
         });
+    }
+
+    generate_pens(pen_count) {
+        for (let i = 0; i < pen_count; i++) {
+            let penWidth = 100;
+            let penHeight = 100;
+            let x = Math.random() * (canvasWidth - penWidth)
+            let y = Math.random() * (canvasHeight - penHeight - 20) // leave space for label
+            let pen = new Pen(
+                x,
+                y,
+                penWidth,
+                penHeight,
+                Math.floor(total_sheep_count / pen_count)
+            );
+
+            this.objects.push(pen)
+            this.objects.push(new PenLabel(pen))
+        }
+
     }
 
     async loop() {
