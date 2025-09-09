@@ -294,6 +294,9 @@ class Timer extends GameObject {
             this.seconds++;
             this.lastUpdate = now;
         }
+        if (this.seconds > 60) {
+            g.game_over = true;
+        }
     }
 }
 
@@ -301,7 +304,8 @@ class Timer extends GameObject {
 class Game {
     constructor() {
         this.objects = [];
-        this.pens = [];
+        this.game_over = false;
+
         this.generate_pens(2)
 
         this.timer = new Timer(canvas.width-10, 30);
@@ -344,6 +348,11 @@ class Game {
         for (const obj of this.objects) {
             await obj.update();
             await obj.draw(ctx);
+        }
+
+        if (this.game_over)
+        {
+            return
         }
 
         requestAnimationFrame(() => this.loop());
