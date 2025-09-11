@@ -184,27 +184,46 @@ class Sheep extends SolidGameObject {
         this.vx = moveX * 0.9;
         this.vy = moveY * 0.9;
 
-        for (let pen of g.objects.filter(o => o instanceof Pen)) {
-            if (this.test_collision(pen)) {
-                if (pen.sheep_count >= pen.max_sheep_count) {
-                    // Push sheep out if pen is full
-                    if (this.x < pen.x) this.x = pen.x - this.radius;
-                    if (this.x > pen.x + pen.width) this.x = pen.x + pen.width + this.radius;
-                    if (this.y < pen.y) this.y = pen.y - this.radius;
-                    if (this.y > pen.y + pen.height) this.y = pen.y + pen.height + this.radius;
-                } else {
-                    const minX = pen.x + this.radius;
-                    const maxX = pen.x + pen.width - this.radius;
-                    const minY = pen.y + this.radius;
-                    const maxY = pen.y + pen.height - this.radius;
+for (let pen of g.objects.filter(o => o instanceof Pen)) {
+    if (this.test_collision(pen)) {
+        if (pen.unlocked && pen.fleeing_sheep.has(this)) {
+            // Compute vector away from pen center
+            const centerX = pen.x + pen.width / 2;
+            const centerY = pen.y + pen.height / 2;
+            let dx = this.x - centerX;
+            let dy = this.y - centerY;
+            let dist = Math.hypot(dx, dy) || 1;
 
-                    if (this.x < minX) this.x = minX;
-                    if (this.x > maxX) this.x = maxX;
-                    if (this.y < minY) this.y = minY;
-                    if (this.y > maxY) this.y = maxY;
-                }
-            }
+            // Move away at reasonable speed
+            const fleeSpeed = this.maxSpeed *0.5;
+            this.vx = (dx / dist) * fleeSpeed;
+            this.vy = (dy / dist) * fleeSpeed;
+
+            // Update position
+            this.x += this.vx;
+            this.y += this.vy;
+
+            continue; // skip normal pen confinement
         }
+
+        if (pen.sheep_count > pen.max_sheep_count) {
+            if (this.x < pen.x) this.x = pen.x - this.radius;
+            if (this.x > pen.x + pen.width) this.x = pen.x + pen.width + this.radius;
+            if (this.y < pen.y) this.y = pen.y - this.radius;
+            if (this.y > pen.y + pen.height) this.y = pen.y + pen.height + this.radius;
+        } else {
+            const minX = pen.x + this.radius;
+            const maxX = pen.x + pen.width - this.radius;
+            const minY = pen.y + this.radius;
+            const maxY = pen.y + pen.height - this.radius;
+
+            if (this.x < minX) this.x = minX;
+            if (this.x > maxX) this.x = maxX;
+            if (this.y < minY) this.y = minY;
+            if (this.y > maxY) this.y = maxY;
+        }
+    }
+}
     }
 }
 
@@ -214,6 +233,8 @@ class Pen extends GameObject {
         this.color = "saddlebrown";
         this.sheep_count = 0;
         this.max_sheep_count = max_sheep_count;
+        this.unlocked = false;
+        this.fleeing_sheep = new Set();
     }
 
     draw(ctx) {
@@ -225,11 +246,28 @@ class Pen extends GameObject {
     }
 
     update() {
+        let sheepInside = [];
+
         this.sheep_count = 0;
         for (const obj of g.objects) {
             if (obj instanceof Sheep && this.test_collision(obj)) {
+                sheepInside.push(obj);
                 this.sheep_count++;
             }
+        }
+
+        if (this.sheep_count > this.max_sheep_count && !this.unlocked) {
+            this.unlocked = true;
+            this.fleeing_sheep.clear();
+            for (const sheep of sheepInside) {
+                this.fleeing_sheep.add(sheep);
+            }
+        }
+
+        // If unlocked, check if empty to lock again
+        if (this.unlocked && this.sheep_count === 0) {
+            this.unlocked = false;
+            this.fleeing_sheep.clear();
         }
     }
 }
