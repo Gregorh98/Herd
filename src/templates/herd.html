@@ -5,9 +5,8 @@
     <title>Garden Game</title>
 </head>
 <body>
-<h1>Games List</h1>
-<ul>
-    <li><a href="/herd">Herd</a> - Herd pesky sheep into their pen within the time limit</li>
-</ul>
+<canvas id="canvas" style="border: medium solid black"></canvas>
 </body>
+
+<script src="{{ url_for('static', filename='js/herd.js') }}"></script>
 </html>
